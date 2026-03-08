@@ -38,4 +38,13 @@ urlpatterns = [
     path('organization/emissions-graph/', OrganizationEmissionsGraphView.as_view(), name='org-emissions-graph'),
     path('organization/department-graph/', OrganizationDepartmentGraphView.as_view(), name='org-department-graph'),
     path('organization/<str:org_id>/', OrganizationDetailView.as_view(), name='org-detail'),
+    path('energy-forecast/', EnergyForecastView.as_view(), name='energy-forecast'),
+    path('iot-live/', IoTDeviceLiveView.as_view(), name='iot-live'),
+    path('communities/', CommunityListView.as_view(), name='community-list'),
+    path('communities/<int:pk>/', CommunityDetailView.as_view(), name='community-detail'),
+    path('communities/<int:pk>/join/', CommunityActionView.as_view(), {'action': 'join'}, name='community-join'),
+    path('communities/<int:pk>/leave/', CommunityActionView.as_view(), {'action': 'leave'}, name='community-leave'),
+    path('auth/send-otp/', SendOTPView.as_view(), name='send-otp'),
+    path('auth/verify-otp/', VerifyOTPView.as_view(), name='verify-otp'),
+    path('chat/', ChatBotView.as_view(), name='chat-bot'),
 ]
