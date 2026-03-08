@@ -1,0 +1,32 @@
+@import "tailwindcss";
+@config "../tailwind.config.js";
+
+@layer base {
+
+  button,
+  a {
+    cursor: pointer;
+  }
+}
+
+@keyframes slide-down {
+  0% {
+    opacity: 0;
+    transform: translateY(-20px);
+    max-height: 0;
+    margin-bottom: 0;
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+    max-height: 100px;
+    /* Adjust based on item height */
+    margin-bottom: 1rem;
+    /* space-y-4 equivalent */
+  }
+}
+
+.animate-slide-down {
+  animation: slide-down 0.8s ease-out forwards;
+}
