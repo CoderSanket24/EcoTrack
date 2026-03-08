@@ -188,3 +188,152 @@ class LogActivityView(generics.ListCreateAPIView):
                  raise serializers.ValidationError("User must be logged in or email provided.")
 
         serializer.save(user=user, carbon_footprint_kg=carbon_footprint)
+class ActivityDetailView(generics.DestroyAPIView):
+    queryset = Activity.objects.all()
+    serializer_class = ActivitySerializer
+    # permission_classes = [IsAuthenticated] # Uncomment in production
+
+    def get_queryset(self):
+        # Ensure users can only delete their own activities
+        user = self.request.user
+        if user.is_authenticated:
+            return Activity.objects.filter(user=user)
+        # Fallback for dummy auth (less secure, but consistent with current state)
+        # We'll allow deletion if the ID matches, assuming the frontend handles ownership visibility
+        return Activity.objects.all()
+
+from .utils import sync_pending_chatbot_activities
+
+class UserDashboardStatsView(generics.RetrieveAPIView):
+    # permission_classes = [IsAuthenticated] # Uncomment in production
+
+    def get(self, request, *args, **kwargs):
+        user = request.user
+        # Fallback for dummy auth
+        if not user.is_authenticated:
+            email = request.query_params.get('email')
+            if email:
+                try:
+                    user = User.objects.get(email=email)
+                except User.DoesNotExist:
+                    return Response({'error': 'User not found'}, status=404)
+            else:
+                 # Return empty/zero stats if no user identified
+                 return Response({
+                    "trend_data": [],
+                    "category_breakdown": {},
+                    "emission_stats": {"today": 0, "yesterday": 0, "this_month": 0, "last_month": 0},
+                    "budget": {"daily_limit": 15.0, "daily_used": 0, "monthly_limit": 450.0, "monthly_used": 0}
+                 })
+
+        # --- LAZY SYNC: Process Pending Chatbot Activities ---
+        sync_pending_chatbot_activities(user)
+        # -----------------------------------------------------
+
+        now = timezone.now()
+        today = now.date()
+        current_month_start = today.replace(day=1)
+        
+        # 1. Trend Data (Last 6 Months) - Optimized with TruncMonth
+        # Calculate start date for 6 months ago
+        six_months_ago = today - datetime.timedelta(days=180) # Approx
+        six_months_ago = six_months_ago.replace(day=1)
+        
+        trend_qs = Activity.objects.filter(
+            user=user,
+            timestamp__date__gte=six_months_ago
+            # We don't restrict end date, just take everything from 6 months ago to now
+        ).annotate(
+            month=TruncMonth('timestamp')
+        ).values('month').annotate(
+            total=Sum('carbon_footprint_kg')
+        ).order_by('month')
+
+        # Convert to list and fill missing months if necessary (optional, but good for UI)
+        # For now, just format existing data
+        trend_data = []
+        # Create a dict for easy lookup
+        trend_dict = {item['month'].date(): item['total'] for item in trend_qs if item['month']}
+        
+        # Generate last 6 months list to ensure continuity
+        for i in range(5, -1, -1):
+            # Calculate month
+            # Logic to act as robust "months ago"
+            y = today.year
+            m = today.month - i
+            while m <= 0:
+                m += 12
+                y -= 1
+            
+            d = datetime.date(y, m, 1)
+            val = trend_dict.get(d, 0.0)
+            trend_data.append({
+                "month": d.strftime("%b %Y"),
+                "value": round(val, 1)
+            })
+
+        # 2. Category Breakdown (This Month) - Optimized
+        cat_qs = Activity.objects.filter(
+            user=user,
+            timestamp__date__gte=current_month_start
+        ).values('category').annotate(
+            total=Sum('carbon_footprint_kg')
+        )
+        
+        category_breakdown = {}
+        for item in cat_qs:
+            category_breakdown[item['category']] = round(item['total'], 1)
+            
+        # Ensure all categories are present with 0 if not found
+        all_categories = ['transport', 'energy', 'food', 'consumption', 'waste']
+        for cat in all_categories:
+            if cat not in category_breakdown:
+                category_breakdown[cat] = 0.0
+
+        # 3. Emission Stats in ONE Query
+        # We need: Today, Yesterday, This Month, Last Month
+        
+        yesterday = today - datetime.timedelta(days=1)
+        
+        # Last Month Range
+        last_month_end = current_month_start - datetime.timedelta(days=1)
+        last_month_start = last_month_end.replace(day=1)
+
+        stats = Activity.objects.filter(user=user).aggregate(
+            today=Sum('carbon_footprint_kg', filter=Q(timestamp__date=today)),
+            yesterday=Sum('carbon_footprint_kg', filter=Q(timestamp__date=yesterday)),
+            this_month=Sum('carbon_footprint_kg', filter=Q(timestamp__date__gte=current_month_start)),
+            last_month=Sum('carbon_footprint_kg', filter=Q(timestamp__date__gte=last_month_start, timestamp__date__lte=last_month_end))
+        )
+        
+        # 4. Budget
+        try:
+            profile = user.profile
+            monthly_limit = profile.carbon_budget_kg
+        except Profile.DoesNotExist:
+            monthly_limit = 500.0 # Default
+            
+        daily_limit = monthly_limit / 30.0
+        
+        # Extract values from stats (handle None)
+        today_emission = stats.get('today') or 0.0
+        yesterday_emission = stats.get('yesterday') or 0.0
+        this_month_emission = stats.get('this_month') or 0.0
+        last_month_emission = stats.get('last_month') or 0.0
+
+        return Response({
+            "trend_data": trend_data,
+            "category_breakdown": category_breakdown,
+            "emission_stats": {
+                "today": round(today_emission, 1),
+                "yesterday": round(yesterday_emission, 1),
+                "this_month": round(this_month_emission, 1),
+                "last_month": round(last_month_emission, 1)
+            },
+            "budget": {
+                "daily_limit": round(daily_limit, 1),
+                "daily_used": round(today_emission, 1),
+                "monthly_limit": round(monthly_limit, 1),
+                "monthly_used": round(this_month_emission, 1)
+            }
+        })
