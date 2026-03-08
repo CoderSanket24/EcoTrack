@@ -16,7 +16,19 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path
-
+from django.urls import path
+from .views import RegisterView, LoginView, update_profile_by_email, OrganizationCreateView, OrganizationDetailView, OrganizationRegisterView, OrganizationLoginView, OrganizationDashboardStatsView, OrganizationMembersView, OrganizationEmissionsGraphView, OrganizationDepartmentGraphView
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('register/', RegisterView.as_view(), name='register'),
+    path('login/', LoginView.as_view(), name='login'),
+    path('update-profile-by-email/', update_profile_by_email, name='update-profile-by-email'),
+    path('organization/create/', OrganizationCreateView.as_view(), name='create-org'), # Keeping this for generic creation, or replace with register
+    path('organization/register/', OrganizationRegisterView.as_view(), name='org-register'),
+    path('organization/login/', OrganizationLoginView.as_view(), name='org-login'),
+    path('organization/dashboard-stats/', OrganizationDashboardStatsView.as_view(), name='org-dashboard-stats'),
+    path('organization/members/', OrganizationMembersView.as_view(), name='org-members'),
+    path('organization/emissions-graph/', OrganizationEmissionsGraphView.as_view(), name='org-emissions-graph'),
+    path('organization/department-graph/', OrganizationDepartmentGraphView.as_view(), name='org-department-graph'),
+    path('organization/<str:org_id>/', OrganizationDetailView.as_view(), name='org-detail'),
 ]
