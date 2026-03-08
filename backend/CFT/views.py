@@ -337,3 +337,160 @@ class UserDashboardStatsView(generics.RetrieveAPIView):
                 "monthly_used": round(this_month_emission, 1)
             }
         })
+
+
+        class LeaderboardView(APIView):
+    permission_classes = [AllowAny] # Or IsAuthenticated
+
+    def get(self, request):
+        user = request.user
+        
+        # Handle Unauthenticated / Dummy User
+        if not user.is_authenticated:
+            email = request.query_params.get('email')
+            if email:
+                try:
+                    user = User.objects.get(email=email)
+                except User.DoesNotExist:
+                    user = None
+            else:
+                user = None
+
+        # 1. Leaderboard List (Top 50 by XP)
+        # Using select_related for efficiency if needed, though Profile is OneToOne
+        top_profiles = Profile.objects.select_related('user').order_by('-xp', '-current_streak', '-total_emission_kg')[:50]
+        
+        leaderboard_data = []
+        for idx, p in enumerate(top_profiles):
+            leaderboard_data.append({
+                "rank": idx + 1,
+                "username": p.user.username,
+                "profile_name": p.profile_name, # or p.first_name + ' ' + p.last_name
+                "xp": p.xp,
+                "level": p.level,
+                "streak": p.current_streak,
+                "score": p.sustainability_score,
+                "avatar": "" # Placeholder or actual URL if existing
+            })
+            
+        # 2. My Ranks
+        my_ranks = {
+            "global": "-",
+            "state": "-",
+            "city": "-"
+        }
+        
+        if user and hasattr(user, 'profile'):
+            profile = user.profile
+            user_xp = profile.xp
+            
+            # Global Rank
+            # Count how many profiles have more XP than me
+            global_rank = Profile.objects.filter(xp__gt=user_xp).count() + 1
+            my_ranks["global"] = global_rank
+            
+            # State Rank
+            if profile.state:
+                state_rank = Profile.objects.filter(state=profile.state, xp__gt=user_xp).count() + 1
+                my_ranks["state"] = state_rank
+                
+            # City Rank
+            if profile.city:
+                city_rank = Profile.objects.filter(city=profile.city, xp__gt=user_xp).count() + 1
+                my_ranks["city"] = city_rank
+
+        return Response({
+            "my_ranks": my_ranks,
+            "leaderboard": leaderboard_data
+        })
+
+
+
+class UserGamificationStatsView(generics.RetrieveAPIView):
+    def get(self, request, *args, **kwargs):
+        user = request.user
+        # Fallback for dummy auth
+        if not user.is_authenticated:
+            email = request.query_params.get('email')
+            if email:
+                try:
+                    user = User.objects.get(email=email)
+                except User.DoesNotExist:
+                    return Response({'error': 'User not found'}, status=404)
+            else:
+                 return Response({'error': 'User not authenticated'}, status=401)
+
+        # 1. User Stats
+        try:
+            profile = user.profile
+            user_stats = {
+                "xp": profile.xp,
+                "level": profile.level,
+                "eco_coins": profile.eco_coins,
+                "sustainability_score": profile.sustainability_score,
+                "is_iot_connected": profile.is_iot_connected,
+                "current_streak": profile.current_streak,
+                "total_emissions": round(profile.total_emission_kg, 2)
+            }
+        except Profile.DoesNotExist:
+             user_stats = {
+                "xp": 0, "level": 1, "eco_coins": 0, 
+                "sustainability_score": 0, "is_iot_connected": False, 
+                "current_streak": 0, "total_emissions": 0.0
+            }
+
+        # 2. Activity Heatmap
+        # Get activities for the current year (or last 365 days)
+        today = timezone.now().date()
+        one_year_ago = today - datetime.timedelta(days=365)
+        
+        daily_activities = Activity.objects.filter(
+            user=user,
+            timestamp__date__gte=one_year_ago
+        ).annotate(
+            date=TruncDate('timestamp')
+        ).values('date').annotate(
+            count=Count('id')
+        ).order_by('date')
+        
+        daily_counts = {
+            entry['date'].strftime("%Y-%m-%d"): entry['count'] 
+            for entry in daily_activities
+        }
+        
+        # Calculate max streak (simple version based on daily_counts keys)
+        # Note: A robust streak calc might need more logic, but this is a start.
+        # For now, let's use the profile's current streak or calculate from daily_counts if needed.
+        # Let's calculate total active days.
+        total_active_days = len(daily_counts)
+        
+        # Simple max streak calculation from the heatmap data
+        max_streak = 0
+        current_streak_calc = 0
+        sorted_dates = sorted(daily_counts.keys())
+        
+        if sorted_dates:
+            import datetime as dt
+            prev_date = dt.datetime.strptime(sorted_dates[0], "%Y-%m-%d").date()
+            current_streak_calc = 1
+            max_streak = 1
+            
+            for date_str in sorted_dates[1:]:
+                curr_date = dt.datetime.strptime(date_str, "%Y-%m-%d").date()
+                if (curr_date - prev_date).days == 1:
+                    current_streak_calc += 1
+                else:
+                    current_streak_calc = 1
+                max_streak = max(max_streak, current_streak_calc)
+                prev_date = curr_date
+
+        activity_heatmap = {
+            "total_active_days": total_active_days,
+            "max_streak": max_streak,
+            "daily_counts": daily_counts
+        }
+
+        return Response({
+            "user_stats": user_stats,
+            "activity_heatmap": activity_heatmap
+        })
