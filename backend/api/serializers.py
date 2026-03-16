@@ -1,6 +1,6 @@
 from django.contrib.auth.models import User
 from rest_framework import serializers
-from .models import Profile, Achievement, UserAchievement, Community, Challenge, UserChallengeProgress, Activity, Organization
+from .models import Profile, Achievement, UserAchievement, Community, Challenge, UserChallengeProgress, Activity, Organization, ComplianceThreshold, ComplianceViolation, ComplianceAlert
 
 class OrganizationSerializer(serializers.ModelSerializer):
     class Meta:
@@ -253,3 +253,33 @@ class RegisterSerializer(serializers.ModelSerializer):
             password=validated_data['password']
         )
         return user
+
+
+class ComplianceThresholdSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ComplianceThreshold
+        fields = (
+            'id', 'daily_limit_kg', 'monthly_limit_kg',
+            'carbon_tax_rate', 'warning_threshold_percent', 'is_active',
+            'created_at', 'updated_at',
+        )
+        read_only_fields = ('id', 'created_at', 'updated_at')
+
+
+class ComplianceAlertSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ComplianceAlert
+        fields = ('id', 'alert_type', 'message', 'is_read', 'is_dismissed', 'created_at', 'read_at')
+
+
+class ComplianceViolationSerializer(serializers.ModelSerializer):
+    alerts = ComplianceAlertSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = ComplianceViolation
+        fields = (
+            'id', 'timestamp', 'period_type', 'period_date',
+            'measured_co2_kg', 'allowed_limit_kg', 'excess_emission_kg',
+            'carbon_tax_rate', 'penalty_amount', 'compliance_status',
+            'alert_sent', 'alert_sent_at', 'notes', 'alerts',
+        )

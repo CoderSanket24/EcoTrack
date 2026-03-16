@@ -195,6 +195,13 @@ class LogActivityView(generics.ListCreateAPIView):
 
         serializer.save(user=user, carbon_footprint_kg=carbon_footprint)
 
+        # Trigger compliance check after every new activity
+        try:
+            from .compliance_engine import check_user_compliance
+            check_user_compliance(user)
+        except Exception:
+            pass  # Never block activity logging due to compliance errors
+
 class ActivityDetailView(generics.DestroyAPIView):
     queryset = Activity.objects.all()
     serializer_class = ActivitySerializer
@@ -1224,3 +1231,152 @@ class OrganizationDepartmentGraphView(APIView):
                 })
                 
         return Response({'department_data': graph_data})
+
+
+# ─────────────────────────────────────────────
+# COMPLIANCE VIEWS
+# ─────────────────────────────────────────────
+from .models import ComplianceThreshold, ComplianceViolation, ComplianceAlert
+from .serializers import ComplianceThresholdSerializer, ComplianceViolationSerializer, ComplianceAlertSerializer
+from .compliance_engine import check_user_compliance, get_threshold
+
+
+class ComplianceStatusView(APIView):
+    """GET: run a live compliance check and return current status + thresholds."""
+    permission_classes = [AllowAny]
+
+    def _resolve_user(self, request):
+        user = request.user
+        if not user.is_authenticated:
+            email = request.query_params.get('email')
+            if email:
+                try:
+                    return User.objects.get(email=email)
+                except User.DoesNotExist:
+                    return None
+        return user
+
+    def get(self, request):
+        user = self._resolve_user(request)
+        if not user:
+            return Response({'error': 'User not found'}, status=404)
+        result = check_user_compliance(user)
+        return Response(result)
+
+
+class ComplianceThresholdView(APIView):
+    """GET / PUT: view or update the user's compliance thresholds."""
+    permission_classes = [AllowAny]
+
+    def _resolve_user(self, request):
+        user = request.user
+        if not user.is_authenticated:
+            email = request.query_params.get('email') or request.data.get('email')
+            if email:
+                try:
+                    return User.objects.get(email=email)
+                except User.DoesNotExist:
+                    return None
+        return user
+
+    def get(self, request):
+        user = self._resolve_user(request)
+        if not user:
+            return Response({'error': 'User not found'}, status=404)
+        threshold = get_threshold(user=user)
+        return Response(ComplianceThresholdSerializer(threshold).data)
+
+    def put(self, request):
+        user = self._resolve_user(request)
+        if not user:
+            return Response({'error': 'User not found'}, status=404)
+        threshold = get_threshold(user=user)
+        serializer = ComplianceThresholdSerializer(threshold, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=400)
+
+
+class ComplianceViolationListView(generics.ListAPIView):
+    """GET: list violation history for a user."""
+    serializer_class = ComplianceViolationSerializer
+    permission_classes = [AllowAny]
+
+    def get_queryset(self):
+        user = self.request.user
+        if not user.is_authenticated:
+            email = self.request.query_params.get('email')
+            if email:
+                try:
+                    user = User.objects.get(email=email)
+                except User.DoesNotExist:
+                    return ComplianceViolation.objects.none()
+            else:
+                return ComplianceViolation.objects.none()
+
+        qs = ComplianceViolation.objects.filter(user=user)
+
+        period = self.request.query_params.get('period_type')
+        if period:
+            qs = qs.filter(period_type=period)
+
+        status_filter = self.request.query_params.get('status')
+        if status_filter:
+            qs = qs.filter(compliance_status=status_filter)
+
+        return qs.prefetch_related('alerts')[:100]
+
+
+class ComplianceAlertListView(APIView):
+    """GET: unread alerts. POST: mark alert(s) as read/dismissed."""
+    permission_classes = [AllowAny]
+
+    def _resolve_user(self, request):
+        user = request.user
+        if not user.is_authenticated:
+            email = request.query_params.get('email') or request.data.get('email')
+            if email:
+                try:
+                    return User.objects.get(email=email)
+                except User.DoesNotExist:
+                    return None
+        return user
+
+    def get(self, request):
+        user = self._resolve_user(request)
+        if not user:
+            return Response({'error': 'User not found'}, status=404)
+
+        alerts = ComplianceAlert.objects.filter(
+            violation__user=user,
+            is_dismissed=False
+        ).select_related('violation')
+
+        unread_only = request.query_params.get('unread') == 'true'
+        if unread_only:
+            alerts = alerts.filter(is_read=False)
+
+        return Response(ComplianceAlertSerializer(alerts, many=True).data)
+
+    def post(self, request):
+        """Mark alerts as read or dismissed."""
+        user = self._resolve_user(request)
+        if not user:
+            return Response({'error': 'User not found'}, status=404)
+
+        alert_ids = request.data.get('alert_ids', [])
+        action = request.data.get('action', 'read')  # 'read' or 'dismiss'
+
+        alerts = ComplianceAlert.objects.filter(
+            violation__user=user,
+            id__in=alert_ids
+        )
+
+        now = timezone.now()
+        if action == 'dismiss':
+            alerts.update(is_dismissed=True, is_read=True, read_at=now)
+        else:
+            alerts.update(is_read=True, read_at=now)
+
+        return Response({'updated': alerts.count()})

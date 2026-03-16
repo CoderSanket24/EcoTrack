@@ -202,3 +202,117 @@ class Activity(models.Model):
 
     def __str__(self):
         return f"{self.user.username} - {self.category} ({self.carbon_footprint_kg}kg)"
+
+
+# --- 7. COMPLIANCE & VIOLATION TRACKING ---
+class ComplianceThreshold(models.Model):
+    """Configurable CO₂ emission limits for compliance monitoring"""
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='compliance_threshold', null=True, blank=True)
+    organization = models.OneToOneField(Organization, on_delete=models.CASCADE, related_name='compliance_threshold', null=True, blank=True)
+
+    # Thresholds
+    daily_limit_kg = models.FloatField(default=50.0, help_text="Daily CO₂ emission limit in kg")
+    monthly_limit_kg = models.FloatField(default=1200.0, help_text="Monthly CO₂ emission limit in kg")
+
+    # Carbon Tax Configuration
+    carbon_tax_rate = models.FloatField(default=40.0, help_text="Penalty rate per kg of excess CO₂ (in ₹)")
+
+    # Alert Configuration
+    warning_threshold_percent = models.FloatField(default=80.0, help_text="Percentage at which to show yellow warning (80-100%)")
+
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(user__isnull=False) | models.Q(organization__isnull=False),
+                name='threshold_user_or_org'
+            )
+        ]
+
+    def __str__(self):
+        if self.user:
+            return f"Threshold for {self.user.username}"
+        return f"Threshold for {self.organization.name}"
+
+
+class ComplianceViolation(models.Model):
+    """Log of CO₂ emission threshold violations"""
+    COMPLIANCE_STATUS_CHOICES = [
+        ('green', 'Green - Within Limit'),
+        ('yellow', 'Yellow - Near Threshold'),
+        ('red', 'Red - Exceeded Threshold'),
+    ]
+
+    PERIOD_TYPE_CHOICES = [
+        ('daily', 'Daily'),
+        ('monthly', 'Monthly'),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='violations', null=True, blank=True)
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='violations', null=True, blank=True)
+
+    # Violation Details
+    timestamp = models.DateTimeField(default=timezone.now)
+    period_type = models.CharField(max_length=10, choices=PERIOD_TYPE_CHOICES)
+    period_date = models.DateField(help_text="Date of the violation (day or month start)")
+
+    # Emission Data
+    measured_co2_kg = models.FloatField(help_text="Total CO₂ measured for the period")
+    allowed_limit_kg = models.FloatField(help_text="Allowed CO₂ limit for the period")
+    excess_emission_kg = models.FloatField(help_text="Amount exceeding the limit")
+
+    # Penalty
+    carbon_tax_rate = models.FloatField(help_text="Tax rate applied (₹/kg)")
+    penalty_amount = models.FloatField(help_text="Calculated penalty in ₹")
+
+    # Status
+    compliance_status = models.CharField(max_length=10, choices=COMPLIANCE_STATUS_CHOICES)
+
+    # Alert Status
+    alert_sent = models.BooleanField(default=False)
+    alert_sent_at = models.DateTimeField(null=True, blank=True)
+
+    # Notes
+    notes = models.TextField(blank=True, help_text="Additional notes or actions taken")
+
+    class Meta:
+        ordering = ['-timestamp']
+        indexes = [
+            models.Index(fields=['user', '-timestamp']),
+            models.Index(fields=['organization', '-timestamp']),
+            models.Index(fields=['compliance_status']),
+            models.Index(fields=['period_date']),
+        ]
+
+    def __str__(self):
+        entity = self.user.username if self.user else self.organization.name
+        return f"{entity} - {self.compliance_status} - {self.period_type} - {self.period_date}"
+
+
+class ComplianceAlert(models.Model):
+    """Real-time alerts for compliance violations"""
+    ALERT_TYPE_CHOICES = [
+        ('warning', 'Warning - Near Threshold'),
+        ('violation', 'Violation - Exceeded Threshold'),
+        ('critical', 'Critical - Severe Violation'),
+    ]
+
+    violation = models.ForeignKey(ComplianceViolation, on_delete=models.CASCADE, related_name='alerts')
+    alert_type = models.CharField(max_length=10, choices=ALERT_TYPE_CHOICES)
+
+    message = models.TextField()
+    is_read = models.BooleanField(default=False)
+    is_dismissed = models.BooleanField(default=False)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    read_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.alert_type} - {self.created_at.strftime('%Y-%m-%d %H:%M')}"
+

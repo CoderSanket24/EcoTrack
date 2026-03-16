@@ -1,6 +1,7 @@
 import React from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell, Legend } from 'recharts';
 import OrgMembersTable from './OrgMembersTable';
+import ComplianceMonitor from './ComplianceMonitor';
 
 const ProfileDashboard = ({ isDarkMode, onNavigate }) => {
     // Mock Data for Charts
@@ -317,9 +318,16 @@ const ProfileDashboard = ({ isDarkMode, onNavigate }) => {
                 </div>
             </div>
 
+            {/* Compliance Monitor — only for regular users */}
+            {!user?.is_org_admin && (
+                <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 transition-colors duration-300">
+                    <ComplianceMonitor user={user} />
+                </div>
+            )}
 
         </div>
     );
+};
 };
 
 export default ProfileDashboard;

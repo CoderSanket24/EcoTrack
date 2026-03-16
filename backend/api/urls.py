@@ -1,5 +1,15 @@
 from django.urls import path
-from .views import RegisterView, LoginView, update_profile_by_email, community_impact_map, LogActivityView, ActivityDetailView, UserDashboardStatsView, UserGamificationStatsView, EnergyForecastView, LeaderboardView, GlobalImpactView, CommunityListView, CommunityDetailView, CommunityActionView, SendOTPView, VerifyOTPView, ChatBotView, OrganizationCreateView, OrganizationDetailView, OrganizationRegisterView, OrganizationLoginView, OrganizationDashboardStatsView, OrganizationMembersView, OrganizationEmissionsGraphView, OrganizationDepartmentGraphView
+from .views import (
+    RegisterView, LoginView, update_profile_by_email, community_impact_map,
+    LogActivityView, ActivityDetailView, UserDashboardStatsView, UserGamificationStatsView,
+    EnergyForecastView, LeaderboardView, GlobalImpactView, CommunityListView,
+    CommunityDetailView, CommunityActionView, SendOTPView, VerifyOTPView, ChatBotView,
+    OrganizationCreateView, OrganizationDetailView, OrganizationRegisterView,
+    OrganizationLoginView, OrganizationDashboardStatsView, OrganizationMembersView,
+    OrganizationEmissionsGraphView, OrganizationDepartmentGraphView,
+    # Compliance
+    ComplianceStatusView, ComplianceThresholdView, ComplianceViolationListView, ComplianceAlertListView,
+)
 
 urlpatterns = [
     path('register/', RegisterView.as_view(), name='register'),
@@ -30,4 +40,10 @@ urlpatterns = [
     path('organization/emissions-graph/', OrganizationEmissionsGraphView.as_view(), name='org-emissions-graph'),
     path('organization/department-graph/', OrganizationDepartmentGraphView.as_view(), name='org-department-graph'),
     path('organization/<str:org_id>/', OrganizationDetailView.as_view(), name='org-detail'),
+
+    # Compliance
+    path('compliance/status/', ComplianceStatusView.as_view(), name='compliance-status'),
+    path('compliance/thresholds/', ComplianceThresholdView.as_view(), name='compliance-thresholds'),
+    path('compliance/violations/', ComplianceViolationListView.as_view(), name='compliance-violations'),
+    path('compliance/alerts/', ComplianceAlertListView.as_view(), name='compliance-alerts'),
 ]
