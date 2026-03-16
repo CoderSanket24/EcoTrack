@@ -9,6 +9,8 @@ from .views import (
     OrganizationEmissionsGraphView, OrganizationDepartmentGraphView,
     # Compliance
     ComplianceStatusView, ComplianceThresholdView, ComplianceViolationListView, ComplianceAlertListView,
+    # ROI
+    ROIRecommendationsView, ROICalculatorView, GreenInvestmentListView, GreenInvestmentDetailView,
 )
 
 urlpatterns = [
@@ -46,4 +48,10 @@ urlpatterns = [
     path('compliance/thresholds/', ComplianceThresholdView.as_view(), name='compliance-thresholds'),
     path('compliance/violations/', ComplianceViolationListView.as_view(), name='compliance-violations'),
     path('compliance/alerts/', ComplianceAlertListView.as_view(), name='compliance-alerts'),
+
+    # ROI / Green Investments
+    path('roi/recommendations/', ROIRecommendationsView.as_view(), name='roi-recommendations'),
+    path('roi/calculate/', ROICalculatorView.as_view(), name='roi-calculate'),
+    path('roi/investments/', GreenInvestmentListView.as_view(), name='roi-investments'),
+    path('roi/investments/<int:pk>/', GreenInvestmentDetailView.as_view(), name='roi-investment-detail'),
 ]

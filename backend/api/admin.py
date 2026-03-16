@@ -1,5 +1,10 @@
 from django.contrib import admin
-from .models import Profile, Achievement, UserAchievement, Community, Challenge, UserChallengeProgress, Activity, Organization, ComplianceThreshold, ComplianceViolation, ComplianceAlert
+from .models import (
+    Profile, Achievement, UserAchievement, Community, Challenge,
+    UserChallengeProgress, Activity, Organization,
+    ComplianceThreshold, ComplianceViolation, ComplianceAlert,
+    GreenInvestment,
+)
 
 class ProfileAdmin(admin.ModelAdmin):
     list_display = ('user', 'profile_name', 'level', 'xp', 'total_emission_kg')
@@ -25,3 +30,9 @@ admin.site.register(UserChallengeProgress)
 admin.site.register(Activity)
 admin.site.register(Organization)
 admin.site.register(ComplianceThreshold)
+
+@admin.register(GreenInvestment)
+class GreenInvestmentAdmin(admin.ModelAdmin):
+    list_display = ('user', 'title', 'category', 'investment_cost', 'monthly_savings', 'payback_months', 'roi_percent_5yr', 'is_implemented')
+    list_filter = ('category', 'is_implemented')
+    search_fields = ('user__username', 'title')

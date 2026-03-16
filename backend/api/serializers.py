@@ -283,3 +283,18 @@ class ComplianceViolationSerializer(serializers.ModelSerializer):
             'carbon_tax_rate', 'penalty_amount', 'compliance_status',
             'alert_sent', 'alert_sent_at', 'notes', 'alerts',
         )
+
+
+from .models import GreenInvestment
+
+class GreenInvestmentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = GreenInvestment
+        fields = (
+            'id', 'investment_id', 'title', 'category', 'description',
+            'current_monthly_kwh', 'electricity_rate',
+            'investment_cost', 'monthly_savings', 'annual_savings',
+            'annual_co2_reduction_kg', 'payback_months', 'roi_percent_5yr',
+            'is_implemented', 'implemented_at', 'created_at',
+        )
+        read_only_fields = ('id', 'created_at')

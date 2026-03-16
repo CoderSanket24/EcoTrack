@@ -316,3 +316,48 @@ class ComplianceAlert(models.Model):
     def __str__(self):
         return f"{self.alert_type} - {self.created_at.strftime('%Y-%m-%d %H:%M')}"
 
+
+
+# ── 8. GREEN INVESTMENT ROI ───────────────────────────────────────────────────
+class GreenInvestment(models.Model):
+    """Stores a user/org's custom or saved green investment for ROI tracking."""
+    CATEGORY_CHOICES = [
+        ('energy',    'Energy'),
+        ('transport', 'Transport'),
+        ('waste',     'Waste'),
+        ('other',     'Other'),
+    ]
+
+    user         = models.ForeignKey(User, on_delete=models.CASCADE, related_name='green_investments', null=True, blank=True)
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='green_investments', null=True, blank=True)
+
+    # Investment details
+    investment_id    = models.CharField(max_length=100, help_text="Catalogue ID or custom")
+    title            = models.CharField(max_length=200)
+    category         = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default='energy')
+    description      = models.TextField(blank=True)
+
+    # Input parameters
+    current_monthly_kwh  = models.FloatField(default=0.0)
+    electricity_rate     = models.FloatField(default=6.0, help_text="₹ per kWh")
+
+    # Calculated outputs (cached)
+    investment_cost          = models.FloatField(default=0.0)
+    monthly_savings          = models.FloatField(default=0.0)
+    annual_savings           = models.FloatField(default=0.0)
+    annual_co2_reduction_kg  = models.FloatField(default=0.0)
+    payback_months           = models.FloatField(null=True, blank=True)
+    roi_percent_5yr          = models.FloatField(default=0.0)
+
+    # Status
+    is_implemented = models.BooleanField(default=False)
+    implemented_at = models.DateTimeField(null=True, blank=True)
+    created_at     = models.DateTimeField(auto_now_add=True)
+    updated_at     = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        entity = self.user.username if self.user else (self.organization.name if self.organization else 'Unknown')
+        return f"{entity} — {self.title}"

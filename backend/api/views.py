@@ -1380,3 +1380,150 @@ class ComplianceAlertListView(APIView):
             alerts.update(is_read=True, read_at=now)
 
         return Response({'updated': alerts.count()})
+
+
+# ─────────────────────────────────────────────
+# GREEN INVESTMENT ROI VIEWS
+# ─────────────────────────────────────────────
+from .models import GreenInvestment
+from .serializers import GreenInvestmentSerializer
+from .roi_engine import generate_recommendations, calculate_roi, INVESTMENT_CATALOGUE, DEFAULT_ELECTRICITY_RATE
+
+
+class ROIRecommendationsView(APIView):
+    """
+    GET  /api/roi/recommendations/
+    Returns ranked ROI recommendations based on the user's actual activity data.
+    Query params:
+      email           – user email (fallback for unauthenticated)
+      electricity_rate – ₹/kWh override (default 6.0)
+    """
+    permission_classes = [AllowAny]
+
+    def _resolve_user(self, request):
+        user = request.user
+        if not user.is_authenticated:
+            email = request.query_params.get('email')
+            if email:
+                try:
+                    return User.objects.get(email=email)
+                except User.DoesNotExist:
+                    return None
+        return user if user.is_authenticated else None
+
+    def get(self, request):
+        user = self._resolve_user(request)
+        rate = float(request.query_params.get('electricity_rate', DEFAULT_ELECTRICITY_RATE))
+
+        # Org admin → generate for org
+        org = None
+        if user and hasattr(user, 'profile') and user.profile.organization:
+            try:
+                if user.is_staff or getattr(user, 'is_org_admin', False):
+                    org = user.profile.organization
+            except Exception:
+                pass
+
+        recommendations = generate_recommendations(user=user, org=org, electricity_rate=rate)
+        return Response({'recommendations': recommendations, 'electricity_rate': rate})
+
+
+class ROICalculatorView(APIView):
+    """
+    POST /api/roi/calculate/
+    Body: { investment_id, monthly_kwh, electricity_rate? }
+    Returns a single detailed ROI calculation.
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        investment_id  = request.data.get('investment_id')
+        monthly_kwh    = float(request.data.get('monthly_kwh', 200))
+        rate           = float(request.data.get('electricity_rate', DEFAULT_ELECTRICITY_RATE))
+
+        # Find in catalogue
+        inv = next((i for i in INVESTMENT_CATALOGUE if i['id'] == investment_id), None)
+        if not inv:
+            return Response({'error': f'Investment "{investment_id}" not found.'}, status=400)
+
+        result = calculate_roi(inv, monthly_kwh, rate)
+        return Response(result)
+
+
+class GreenInvestmentListView(generics.ListCreateAPIView):
+    """
+    GET  /api/roi/investments/  – list saved investments
+    POST /api/roi/investments/  – save a new investment
+    """
+    serializer_class = GreenInvestmentSerializer
+    permission_classes = [AllowAny]
+
+    def _resolve_user(self, request):
+        user = request.user
+        if not user.is_authenticated:
+            email = request.query_params.get('email') or request.data.get('email')
+            if email:
+                try:
+                    return User.objects.get(email=email)
+                except User.DoesNotExist:
+                    return None
+        return user if user.is_authenticated else None
+
+    def get_queryset(self):
+        user = self._resolve_user(self.request)
+        if not user:
+            return GreenInvestment.objects.none()
+        return GreenInvestment.objects.filter(user=user)
+
+    def perform_create(self, serializer):
+        user = self._resolve_user(self.request)
+        if not user:
+            raise serializers.ValidationError('Authentication required.')
+
+        # Auto-calculate ROI fields before saving
+        inv_id   = serializer.validated_data.get('investment_id')
+        kwh      = serializer.validated_data.get('current_monthly_kwh', 200)
+        rate     = serializer.validated_data.get('electricity_rate', DEFAULT_ELECTRICITY_RATE)
+
+        inv_template = next((i for i in INVESTMENT_CATALOGUE if i['id'] == inv_id), None)
+        roi_data = calculate_roi(inv_template, kwh, rate) if inv_template else {}
+
+        serializer.save(
+            user=user,
+            investment_cost         = roi_data.get('investment_cost', 0),
+            monthly_savings         = roi_data.get('monthly_savings', 0),
+            annual_savings          = roi_data.get('annual_savings', 0),
+            annual_co2_reduction_kg = roi_data.get('annual_co2_reduction_kg', 0),
+            payback_months          = roi_data.get('payback_months'),
+            roi_percent_5yr         = roi_data.get('roi_percent_5yr', 0),
+        )
+
+
+class GreenInvestmentDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """
+    GET/PUT/DELETE /api/roi/investments/<pk>/
+    Also supports marking an investment as implemented via PUT { is_implemented: true }
+    """
+    serializer_class = GreenInvestmentSerializer
+    permission_classes = [AllowAny]
+
+    def get_queryset(self):
+        user = self.request.user
+        if not user.is_authenticated:
+            email = self.request.query_params.get('email')
+            if email:
+                try:
+                    user = User.objects.get(email=email)
+                    return GreenInvestment.objects.filter(user=user)
+                except User.DoesNotExist:
+                    pass
+            return GreenInvestment.objects.none()
+        return GreenInvestment.objects.filter(user=user)
+
+    def perform_update(self, serializer):
+        # Auto-stamp implemented_at when marked implemented
+        is_impl = serializer.validated_data.get('is_implemented')
+        if is_impl and not serializer.instance.is_implemented:
+            serializer.save(implemented_at=timezone.now())
+        else:
+            serializer.save()
