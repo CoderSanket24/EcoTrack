@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+ import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 // import { API_URL } from '../App';
 
@@ -21,7 +21,7 @@ export const mockChallenges = [
         image: "https://images.unsplash.com/photo-1519003300449-424ad0405076?auto=format&fit=crop&w=800&q=80",
         badgeIcon: "fas fa-bicycle",
         rules: [
-            "Log at least one eco-friendly commute per day.",
+            "Log at least one eco-friendly commute per day.", 
             "No personal car usage allowed for commutes.",
             "Share a photo of your commute on the community feed."
         ],

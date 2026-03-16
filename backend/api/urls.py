@@ -12,6 +12,7 @@ from .views import (
     # ROI
     ROIRecommendationsView, ROICalculatorView, GreenInvestmentListView, GreenInvestmentDetailView,
 )
+from .satellite_views import SatelliteEmissionView
 
 urlpatterns = [
     path('register/', RegisterView.as_view(), name='register'),
@@ -54,4 +55,7 @@ urlpatterns = [
     path('roi/calculate/', ROICalculatorView.as_view(), name='roi-calculate'),
     path('roi/investments/', GreenInvestmentListView.as_view(), name='roi-investments'),
     path('roi/investments/<int:pk>/', GreenInvestmentDetailView.as_view(), name='roi-investment-detail'),
+    
+    # Satellite
+    path('satellite-emissions/', SatelliteEmissionView.as_view(), name='satellite-emissions'),
 ]

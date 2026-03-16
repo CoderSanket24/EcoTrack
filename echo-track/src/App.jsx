@@ -23,6 +23,7 @@ import BackgroundAnimation from './components/BackgroundAnimation';
 import EcoBot from './components/EcoBot';
 import OrgImpactStats from './components/OrgImpactStats';
 import OrgEmissionsGraph from './components/OrgEmissionsGraph';
+import SatelliteEmissionDetection from './components/SatelliteEmissionDetection';
 import './App.css';
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -245,6 +246,7 @@ function App() {
               )}
 
               <div id="global-emissions"><EmissionsMap /></div>
+              <div id="satellite-emissions"><SatelliteEmissionDetection /></div>
 
               {/* Show Comparison only for Regular Users */}
               {/* Show Comparison only for Regular Users */}
